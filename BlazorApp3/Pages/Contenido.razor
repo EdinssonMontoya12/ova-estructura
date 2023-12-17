@@ -1,0 +1,27 @@
+﻿@page "/Modulo/{moduloId}"
+
+@inject OvaEstructuraContext dbContext
+
+@using BlazorApp3.Models.Entitys
+
+<PageTitle>Index</PageTitle>
+
+<iframe src="@modulo.Enlace" width="100%" height="600px" style="border: none;"></iframe>
+
+@code{
+
+    [Parameter]
+    public string moduloId { get; set; }
+
+    private Modulo modulo;
+
+    protected override async Task OnInitializedAsync()
+    {
+        modulo = dbContext.Modulos.FirstOrDefault( m => m.Moduloid == int.Parse(moduloId) );
+    }
+
+    protected override void OnParametersSet()
+    {
+        modulo = dbContext.Modulos.FirstOrDefault(m => m.Moduloid == int.Parse(moduloId));
+    }
+}

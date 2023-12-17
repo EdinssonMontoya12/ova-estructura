@@ -1,0 +1,149 @@
+﻿@page "/Cuestionario/{moduloId}"
+
+@using BlazorApp3.Models.Entitys
+@using BlazorApp3.Pages.Componentes
+@using Microsoft.AspNetCore.Identity
+@using Microsoft.EntityFrameworkCore
+@using System.Security.Claims
+@inject OvaEstructuraContext dbContext
+@inject NavigationManager navManager
+@inject Microsoft.AspNetCore.Identity.UserManager<IdentityUser> userManager
+@inject Microsoft.AspNetCore.Components.Authorization.AuthenticationStateProvider authenticationStateProvider
+
+<PageTitle>Cuestionario @modulo.Codigo</PageTitle>
+
+@if (detalleMod != null)
+{
+    <div class="alert alert-primary mb-3" role="alert">
+        <p> Ya a resuelto este formulario con un puntaje del <b>@detalleMod.Porcentaje%</b> </p>
+    </div>
+}
+
+@for (int i = 0; i < preguntaList.Count; i++)
+{
+    int index = i;
+
+    <div>
+        <BlazorApp3.Pages.Componentes.Preguntas @ref="preguntas[index]"
+                                                preguntaId="@preguntaList[i].Preguntaid"
+                                                preguntaSend="@preguntaList[i]"></BlazorApp3.Pages.Componentes.Preguntas>
+    </div>
+}
+
+<button class="btn btn-success" @onclick="calificar">Calificar</button>
+
+@if (mostarAcierto)
+{
+    @if (porcentajeAcierto < 70)
+    {
+
+        <div class="alert alert-danger mb-3 mt-3" role="alert">
+            <p class=""> El <b>@porcentajeAcierto%</b> de sus respuesta son correctas, requiere minimo el 70% para aprobar el modulo.</p>
+        </div>
+
+        <button class="btn btn-success" @onclick="reintentar">Reintentar</button>
+    }
+}
+
+
+@code {
+
+    [Parameter]
+    public string moduloId { get; set; }
+
+    private List<Preguntas> preguntas = new List<Preguntas>();
+    private List<Pregunta> preguntaList;
+    private bool mostarAcierto = false;
+    private decimal porcentajeAcierto;
+    private ModuloDet detalleMod;
+    public Modulo modulo;
+
+    private string? userId = "";
+
+    protected override async Task OnInitializedAsync()
+    {
+        var authenticationState = await authenticationStateProvider.GetAuthenticationStateAsync();
+        userId = authenticationState?.User?.FindFirstValue(ClaimTypes.NameIdentifier);
+
+        detalleMod = dbContext.ModuloDets
+                .Include(d => d.Modulo)
+                .Include(d => d.User)
+                .FirstOrDefault(d => d.Userid.Equals(userId) && d.Moduloid == int.Parse(moduloId));
+
+        modulo = dbContext.Modulos.FirstOrDefault(m => m.Moduloid == int.Parse(moduloId));
+
+        preguntaList = dbContext.Preguntas.Include(p => p.OpcionesPregunta).Where(p => p.Moduloid == int.Parse(moduloId)).OrderBy(p => p.Numero).ToList();
+
+        preguntas.Clear();
+
+        foreach (var pregunta in preguntaList)
+            preguntas.Add(new Preguntas());
+    }
+
+    protected override void OnParametersSet()
+    {
+        mostarAcierto = false;
+        porcentajeAcierto = 0;
+
+        detalleMod = dbContext.ModuloDets
+                .Include(d => d.Modulo)
+                .Include(d => d.User)
+                .FirstOrDefault(d => d.Userid.Equals(userId) && d.Moduloid == int.Parse(moduloId));
+
+        modulo = dbContext.Modulos.FirstOrDefault(m => m.Moduloid == int.Parse(moduloId));
+
+        preguntaList = dbContext.Preguntas.Include( p => p.OpcionesPregunta ).Where(p => p.Moduloid == int.Parse(moduloId)).OrderBy(p => p.Numero).ToList();
+    }
+
+    private async void calificar()
+    {
+        int correctas = 0;
+        porcentajeAcierto = 0;
+
+        foreach (var pregunta in preguntas)
+        {
+            pregunta.calificar();
+
+            if (pregunta.correcta)
+                correctas++;
+        }
+
+        porcentajeAcierto = ((correctas * 100) / preguntas.Count);
+        mostarAcierto = true;
+
+        if (porcentajeAcierto >= 70)
+        {
+            detalleMod = dbContext.ModuloDets
+                .Include(d => d.Modulo)
+                .Include(d => d.User)
+                .FirstOrDefault(d => d.Userid.Equals(userId) && d.Moduloid == int.Parse(moduloId));
+
+            if (detalleMod is null)
+            {
+                detalleMod = new ModuloDet
+                    {
+                        Userid = userId,
+                        Moduloid = int.Parse(moduloId),
+                        Porcentaje = porcentajeAcierto
+                    };
+
+                dbContext.Add(detalleMod);
+            }
+            else
+            {
+                if (porcentajeAcierto > detalleMod.Porcentaje)
+                    detalleMod.Porcentaje = porcentajeAcierto;
+            }
+
+            dbContext.SaveChanges();
+
+            navManager.NavigateTo($"Cuestionario/{moduloId}");
+        }
+    }
+
+    private async Task reintentar()
+    {
+        navManager.NavigateTo($"Cuestionario/{moduloId}", forceLoad: true);
+    }
+}
+
